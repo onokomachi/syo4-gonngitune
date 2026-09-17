@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronLeft, Flame, BookOpen, Lightbulb, RotateCcw, Flower2, GitCompare } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Flame, BookOpen, Lightbulb, RotateCcw, Leaf, GitCompare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MascotPinto, SpeechBubble } from './Mascot';
 import { questions } from './data';
@@ -33,21 +33,21 @@ export function TitleScreen({ solvedCount, streak, reviewCount, cycleCount, mast
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-pink-50 rounded-full -translate-y-1/2 translate-x-1/2 opacity-60" />
+        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-50 rounded-full -translate-y-1/2 translate-x-1/2 opacity-60" />
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-emerald-50 rounded-full translate-y-1/2 -translate-x-1/2 opacity-60" />
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-8 max-w-lg w-full">
         {/* Header */}
         <div className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-2 text-pink-400 text-sm font-bold tracking-widest uppercase">
-            <Flower2 size={16} />
+          <div className="flex items-center justify-center gap-2 mb-2 text-orange-400 text-sm font-bold tracking-widest uppercase">
+            <Leaf size={16} />
             <span>光村図書 国語 4年</span>
           </div>
           <h1 className="text-4xl font-black text-stone-800 leading-tight">
-            一つの<span className="text-pink-500">花</span>
+            ごん<span className="text-orange-500">ぎつね</span>
           </h1>
-          <p className="text-stone-500 mt-2 text-sm">今西 祐行 ／ 学習アプリ</p>
+          <p className="text-stone-500 mt-2 text-sm">新美 南吉 ／ 学習アプリ</p>
         </div>
 
         {/* Mascot + bubble */}
@@ -63,7 +63,7 @@ export function TitleScreen({ solvedCount, streak, reviewCount, cycleCount, mast
               <MascotPinto expression={solvedCount === total ? 'celebrating' : solvedCount > 0 ? 'encouraging' : 'happy'} size={120} />
             </motion.div>
           </div>
-          <p className="text-xs text-stone-400 mt-2">コスモちゃん</p>
+          <p className="text-xs text-stone-400 mt-2">ごん</p>
         </div>
 
         {/* Cycle badge */}
@@ -75,11 +75,11 @@ export function TitleScreen({ solvedCount, streak, reviewCount, cycleCount, mast
         <div className="w-full bg-stone-100 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-stone-200">
           <div className="flex justify-between items-center">
             <span className="text-sm font-bold text-stone-600">この周のクリア</span>
-            <span className="font-black text-pink-600">{solvedCount} / {total}問</span>
+            <span className="font-black text-orange-600">{solvedCount} / {total}問</span>
           </div>
           <div className="w-full bg-stone-200 rounded-full h-3 overflow-hidden">
             <motion.div
-              className="h-full bg-pink-500 rounded-full"
+              className="h-full bg-orange-500 rounded-full"
               initial={{ width: 0 }}
               animate={{ width: `${progress * 100}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -113,7 +113,7 @@ export function TitleScreen({ solvedCount, streak, reviewCount, cycleCount, mast
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={onStart}
-            className="w-full py-4 bg-pink-500 hover:bg-pink-600 text-white font-black text-xl rounded-2xl shadow-md flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-black text-xl rounded-2xl shadow-md flex items-center justify-center gap-2 transition-colors"
           >
             {cycleCount >= 2 && solvedCount === 0 ? `${cycleCount}周目をはじめる`
               : solvedCount > 0 ? 'つづきから学ぶ'
@@ -147,24 +147,24 @@ export function TitleScreen({ solvedCount, streak, reviewCount, cycleCount, mast
 const SLIDES = [
   {
     icon: <MascotPinto expression="happy" size={100} />,
-    title: 'コスモちゃんといっしょに！',
-    body: 'コスモスの花のせい「コスモちゃん」がいっしょに学ぶよ。まちがえても大丈夫！ヒントを出してくれるから、あきらめないでね。',
-    color: 'bg-pink-50 border-pink-200',
-    accent: 'text-pink-600',
+    title: 'ごんといっしょに！',
+    body: 'ひとりぼっちの小ぎつね「ごん」がいっしょに学ぶよ。まちがえても大丈夫！ヒントを出してくれるから、あきらめないでね。',
+    color: 'bg-orange-50 border-orange-200',
+    accent: 'text-orange-600',
   },
   {
     icon: <BookOpen size={80} className="text-emerald-500" />,
     title: '5つのモードで学ぼう',
-    body: '「読む」で場面ごとに読んで、「問題」で読み取りを確かめて、「漢字」「場面マップ」「対比表（戦争中⇄十年後）」で物語を深く読み取れるよ。',
+    body: '「読む」で場面ごとに読んで、「問題」で読み取りを確かめて、「漢字」「場面マップ」「対比表（いたずら⇄つぐない）」で物語を深く読み取れるよ。',
     color: 'bg-emerald-50 border-emerald-200',
     accent: 'text-emerald-600',
   },
   {
-    icon: <GitCompare size={80} className="text-pink-500" />,
+    icon: <GitCompare size={80} className="text-orange-500" />,
     title: '対比表で主題をつかもう',
-    body: '「戦争中」と「十年後」をくらべて、変わったもの（くらし）と、変わらないもの（お父さんの愛＝コスモス）を見つけよう。題名『一つの花』のひみつが見えてくるよ。',
-    color: 'bg-pink-50 border-pink-200',
-    accent: 'text-pink-600',
+    body: '「いたずら（うなぎ事件）」と「つぐない（くり・松たけ）」で、ごんの気持ちと兵十の受け止め方をくらべよう。二人の思いの「すれちがい」が見えてくるよ。',
+    color: 'bg-orange-50 border-orange-200',
+    accent: 'text-orange-600',
   },
   {
     icon: <Lightbulb size={80} className="text-amber-500" />,
@@ -198,7 +198,7 @@ export function OnboardingSlides({ onDone }: OnboardingProps) {
           {SLIDES.map((_, i) => (
             <div
               key={i}
-              className={`h-2 rounded-full transition-all duration-300 ${i === idx ? 'w-8 bg-pink-500' : 'w-2 bg-stone-300'}`}
+              className={`h-2 rounded-full transition-all duration-300 ${i === idx ? 'w-8 bg-orange-500' : 'w-2 bg-stone-300'}`}
             />
           ))}
         </div>
@@ -238,7 +238,7 @@ export function OnboardingSlides({ onDone }: OnboardingProps) {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => setIdx(i => i + 1)}
-              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white font-bold px-6 py-3 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition-colors"
             >
               つぎへ <ChevronRight size={20} />
             </motion.button>
@@ -246,7 +246,7 @@ export function OnboardingSlides({ onDone }: OnboardingProps) {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={onDone}
-              className="flex items-center gap-2 bg-pink-500 hover:bg-pink-600 text-white font-bold px-6 py-3 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition-colors"
             >
               はじめる！ <ChevronRight size={20} />
             </motion.button>

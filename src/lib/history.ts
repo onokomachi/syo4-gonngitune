@@ -14,7 +14,7 @@
  * 記録は直近200件で打ち切る。1件あたり約120バイトなので、
  * 上限まで溜まっても25KB程度（ブラウザの上限5MBの0.5%）。
  */
-const KEY = 'hitotsunohana_history_v1';
+const KEY = 'gongitsune_history_v1';
 const LIMIT = 200;
 
 export interface HistoryEntry {

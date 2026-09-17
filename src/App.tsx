@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react';
 import {
-  Flower2, BookOpen, HelpCircle, PenTool, Layers, GitCompare,
+  PawPrint, BookOpen, HelpCircle, PenTool, Layers, GitCompare,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle, Lightbulb, Star,
-  Swords, Sprout, Flame, RotateCcw, Home
+  Sprout, Flame, RotateCcw, Home
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -17,7 +17,7 @@ import { noteCorrect, noteWrong, flushAbandoned, getHistory } from './lib/histor
 
 type Screen = 'title' | 'onboarding' | 'learn';
 type Mode = 'read' | 'quiz' | 'kanji' | 'structure' | 'contrast';
-type Cell = 'war-life' | 'war-cosmos' | 'after-life' | 'after-cosmos';
+type Cell = 'mischief-gon' | 'mischief-hyoju' | 'atonement-gon' | 'atonement-hyoju';
 
 interface WrongEntry {
   questionId: number;
@@ -25,30 +25,36 @@ interface WrongEntry {
   lastWrong: string; // YYYY-MM-DD
 }
 
-// 場面の区切り（時代・場面）ごとの色
+// 場面の区切り（物語の展開）ごとの色
 const SECTION_COLOR: Record<Paragraph['section'], string> = {
-  war: 'border-orange-300 bg-orange-50',
-  parting: 'border-rose-400 bg-rose-50',
-  after: 'border-emerald-400 bg-emerald-50',
+  mischief: 'border-orange-300 bg-orange-50',
+  grief: 'border-slate-400 bg-slate-50',
+  atonement: 'border-emerald-400 bg-emerald-50',
+  irony: 'border-amber-400 bg-amber-50',
+  tragedy: 'border-rose-400 bg-rose-50',
 };
 
 const SECTION_LABEL: Record<Paragraph['section'], string> = {
-  war: '戦争中',
-  parting: '別れ',
-  after: '十年後',
+  mischief: 'いたずら',
+  grief: 'かなしみ',
+  atonement: 'つぐない',
+  irony: 'すれちがい',
+  tragedy: '悲しい結末',
 };
 
 const SECTION_BADGE: Record<Paragraph['section'], string> = {
-  war: 'bg-orange-500 text-white',
-  parting: 'bg-rose-500 text-white',
-  after: 'bg-emerald-500 text-white',
+  mischief: 'bg-orange-500 text-white',
+  grief: 'bg-slate-500 text-white',
+  atonement: 'bg-emerald-500 text-white',
+  irony: 'bg-amber-500 text-white',
+  tragedy: 'bg-rose-500 text-white',
 };
 
 // 登場人物ごとのラベル（心情カードの見出し）
 const WHO_LABEL: Record<NonNullable<Paragraph['feeling']>['who'], string> = {
-  yumi: 'ゆみ子',
-  father: 'お父さん',
-  mother: 'お母さん',
+  gon: 'ごん',
+  hyoju: '兵十',
+  kasuke: '加助',
   theme: '物語のテーマ',
 };
 
@@ -114,7 +120,7 @@ export default function App() {
 
   // Contrast table mode
   const [placedChips, setPlacedChips] = useState<Record<Cell, number[]>>({
-    'war-life': [], 'war-cosmos': [], 'after-life': [], 'after-cosmos': []
+    'mischief-gon': [], 'mischief-hyoju': [], 'atonement-gon': [], 'atonement-hyoju': []
   });
   const [selectedChipId, setSelectedChipId] = useState<number | null>(null);
   const [contrastFeedback, setContrastFeedback] = useState<{ cell: Cell; ok: boolean } | null>(null);
@@ -125,6 +131,12 @@ export default function App() {
   const [mascotBubble, setMascotBubble] = useState(false);
 
   const textContainerRef = useRef<HTMLDivElement>(null);
+
+  // Active question depends on mode
+  const currentPage = pages[currentPageIndex];
+  const pageQuestions = questions.filter(q => q.pageId === currentPage.id);
+  const normalQuestion = pageQuestions[currentQuestionIndex];
+  const currentQuestion: Question | undefined = reviewMode ? reviewQueue[reviewIdx] : normalQuestion;
 
   // ── localStorage init ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -318,12 +330,6 @@ export default function App() {
     }
   };
 
-  // Active question depends on mode
-  const currentPage = pages[currentPageIndex];
-  const pageQuestions = questions.filter(q => q.pageId === currentPage.id);
-  const normalQuestion = pageQuestions[currentQuestionIndex];
-  const currentQuestion: Question | undefined = reviewMode ? reviewQueue[reviewIdx] : normalQuestion;
-
   const currentKanjiList = kanjiList.filter(k => k.pageId === currentPage.id);
 
   // ── Hint cycling ─────────────────────────────────────────────────────────────
@@ -509,13 +515,13 @@ export default function App() {
     setTimeout(() => setContrastFeedback(null), 800);
   };
   const handleResetContrast = () => {
-    setPlacedChips({ 'war-life': [], 'war-cosmos': [], 'after-life': [], 'after-cosmos': [] });
+    setPlacedChips({ 'mischief-gon': [], 'mischief-hyoju': [], 'atonement-gon': [], 'atonement-hyoju': [] });
     setSelectedChipId(null);
     setContrastFeedback(null);
   };
   const contrastComplete =
-    placedChips['war-life'].length === 1 && placedChips['war-cosmos'].length === 1 &&
-    placedChips['after-life'].length === 1 && placedChips['after-cosmos'].length === 1;
+    placedChips['mischief-gon'].length === 1 && placedChips['mischief-hyoju'].length === 1 &&
+    placedChips['atonement-gon'].length === 1 && placedChips['atonement-hyoju'].length === 1;
 
   // ── renderText ──────────────────────────────────────────────────────────────
   // In review mode we show the page the current review question belongs to
@@ -747,10 +753,10 @@ export default function App() {
           </button>
           <div className="min-w-0">
             <h1 className="text-base lg:text-lg font-bold text-stone-700 flex items-center gap-1.5 truncate">
-              <Flower2 className="text-pink-500 shrink-0" size={18} aria-label="コスモス" />
-              一つの花
+              <PawPrint className="text-orange-500 shrink-0" size={18} aria-label="きつね" />
+              ごんぎつね
             </h1>
-            <p className="text-[10px] text-stone-500 ml-6 truncate">今西 祐行 ／ 光村図書 4年</p>
+            <p className="text-[10px] text-stone-500 ml-6 truncate">新美 南吉 ／ 光村図書 4年</p>
           </div>
           <div className="flex items-center gap-1.5 ml-1 shrink-0">
             <div className={`flex items-center gap-1 px-2 py-1 rounded-full font-bold border-2 text-xs ${cycleBadge(cycleCount).cls}`} title={`現在 ${cycleBadge(cycleCount).label}`}>
@@ -781,7 +787,7 @@ export default function App() {
             <ModeButton active={mode === 'quiz' || reviewMode} onClick={() => { setReviewMode(false); setMode('quiz'); }} icon={<HelpCircle size={16} />} label="問題" color="amber" />
             <ModeButton active={mode === 'kanji'} onClick={() => { setReviewMode(false); setMode('kanji'); }} icon={<PenTool size={16} />} label="漢字" color="indigo" />
             <ModeButton active={mode === 'structure'} onClick={() => { setReviewMode(false); setMode('structure'); }} icon={<Layers size={16} />} label="場面" color="emerald" />
-            <ModeButton active={mode === 'contrast'} onClick={() => { setReviewMode(false); setMode('contrast'); }} icon={<GitCompare size={16} />} label="対比" color="pink" />
+            <ModeButton active={mode === 'contrast'} onClick={() => { setReviewMode(false); setMode('contrast'); }} icon={<GitCompare size={16} />} label="対比" color="orange" />
           </div>
         </div>
       </header>
@@ -1076,7 +1082,7 @@ export default function App() {
                   </div>
                   <p className="text-stone-600 mb-4 text-sm">
                     物語の場面のはたらきを見てみよう。カードをタップすると、左の本文へジャンプし、<span className="text-emerald-700 font-bold">読みどころ</span>が開くよ。
-                    <span className="text-orange-600 font-bold">戦争中</span>・<span className="text-rose-600 font-bold">別れ</span>・<span className="text-emerald-600 font-bold">十年後</span>で色分けされているよ。
+                    <span className="text-orange-600 font-bold">いたずら</span>・<span className="text-slate-600 font-bold">かなしみ</span>・<span className="text-emerald-600 font-bold">つぐない</span>・<span className="text-amber-600 font-bold">すれちがい</span>・<span className="text-rose-600 font-bold">悲しい結末</span>で色分けされているよ。
                   </p>
                   <div className="flex flex-col gap-3">
                     {structure.map(p => {
@@ -1121,26 +1127,26 @@ export default function App() {
 
               {!reviewMode && mode === 'contrast' && (
                 <div className="flex-1 flex flex-col">
-                  <h2 className="text-xl font-bold text-pink-600 flex items-center gap-2 mb-3 pb-2 border-b border-pink-100">
-                    <GitCompare /> 戦争中 ⇄ 十年後 対比表
+                  <h2 className="text-xl font-bold text-orange-600 flex items-center gap-2 mb-3 pb-2 border-b border-orange-100">
+                    <GitCompare /> いたずら ⇄ つぐない 対比表
                   </h2>
                   <p className="text-stone-600 text-sm mb-4">
                     下の<strong>カード</strong>をタップ → <strong>表のマス</strong>をタップ で入れていこう。<br />
-                    「くらし（食べ物）」と「コスモス（お父さんの花）」が、戦争中と十年後でどう変わったか整理しよう。
+                    「ごんの気持ち」と「兵十の受け止め方」が、いたずらの場面とつぐないの場面でどうちがうか整理しよう。
                   </p>
 
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     <div></div>
-                    <div className="text-center text-xs font-bold text-amber-700 bg-amber-50 rounded-lg py-2 flex items-center justify-center">くらし<br />（食べ物）</div>
-                    <div className="text-center text-xs font-bold text-pink-700 bg-pink-50 rounded-lg py-2 flex items-center justify-center">コスモス<br />（花）</div>
+                    <div className="text-center text-xs font-bold text-amber-700 bg-amber-50 rounded-lg py-2 flex items-center justify-center">ごんの<br />気持ち</div>
+                    <div className="text-center text-xs font-bold text-indigo-700 bg-indigo-50 rounded-lg py-2 flex items-center justify-center">兵十の<br />受け止め方</div>
 
-                    <div className="flex items-center justify-center text-sm font-bold text-orange-700 bg-orange-100 rounded-lg">戦争中</div>
-                    <Cell2x2 cell="war-life" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
-                    <Cell2x2 cell="war-cosmos" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
+                    <div className="flex items-center justify-center text-sm font-bold text-orange-700 bg-orange-100 rounded-lg">いたずら</div>
+                    <Cell2x2 cell="mischief-gon" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
+                    <Cell2x2 cell="mischief-hyoju" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
 
-                    <div className="flex items-center justify-center text-sm font-bold text-emerald-700 bg-emerald-100 rounded-lg">十年後</div>
-                    <Cell2x2 cell="after-life" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
-                    <Cell2x2 cell="after-cosmos" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
+                    <div className="flex items-center justify-center text-sm font-bold text-emerald-700 bg-emerald-100 rounded-lg">つぐない</div>
+                    <Cell2x2 cell="atonement-gon" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
+                    <Cell2x2 cell="atonement-hyoju" placed={placedChips} chips={contrastChips} feedback={contrastFeedback} onPlace={handlePlaceChip} />
                   </div>
 
                   <div className="mb-4">
@@ -1164,12 +1170,12 @@ export default function App() {
                   </div>
 
                   {contrastComplete && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-auto bg-pink-50 border border-pink-200 rounded-xl p-4">
-                      <p className="font-bold text-pink-700 mb-1">完成！この物語の主題は——</p>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-auto bg-orange-50 border border-orange-200 rounded-xl p-4">
+                      <p className="font-bold text-orange-700 mb-1">完成！この物語の主題は——</p>
                       <p className="text-stone-700 text-sm">
-                        くらし（食べ物）は「物がない戦争中」から「豊かな十年後」へ大きく<strong>変わった</strong>。
-                        でも、お父さんがくれた<strong>「一輪」のコスモスが「いっぱい」に増えた</strong>ように、
-                        ゆみ子を思うお父さんの愛と平和への願いは、形を変えて今も<strong>変わらず</strong>ゆみ子を包んでいる。
+                        ごんは、いたずらのときは<strong>軽い気持ち</strong>だったが、その後は兵十のために<strong>つぐない</strong>を続けた。
+                        でも、その思いは兵十に届かず、兵十は<strong>「神様のしわざ」</strong>だと思いこんでしまう。
+                        ごんの気持ちと兵十の受け止め方の<strong>「すれちがい」</strong>こそが、この物語のいちばん切ないところ。
                       </p>
                     </motion.div>
                   )}
@@ -1353,7 +1359,7 @@ function Cell2x2({
   const chipId = placed[cell][0];
   const chip = chipId != null ? chips.find(c => c.id === chipId) : null;
   const fb = feedback && feedback.cell === cell ? feedback : null;
-  const baseColor = cell.endsWith('-cosmos') ? 'border-pink-200' : 'border-amber-200';
+  const baseColor = cell.endsWith('-hyoju') ? 'border-indigo-200' : 'border-amber-200';
   const flash =
     fb?.ok === false ? 'bg-red-200 border-red-400 animate-pulse' :
     fb?.ok === true ? 'bg-green-100 border-green-400' :
@@ -1380,19 +1386,19 @@ function ModeButton({
   onClick: () => void;
   icon: ReactNode;
   label: string;
-  color: 'emerald' | 'amber' | 'indigo' | 'pink';
+  color: 'emerald' | 'amber' | 'indigo' | 'orange';
 }) {
   const colorMap: Record<typeof color, string> = {
     emerald: 'bg-emerald-500 text-white shadow-md',
     amber: 'bg-amber-500 text-white shadow-md',
     indigo: 'bg-indigo-500 text-white shadow-md',
-    pink: 'bg-pink-500 text-white shadow-md',
+    orange: 'bg-orange-500 text-white shadow-md',
   };
   const inactiveColorMap: Record<typeof color, string> = {
     emerald: 'text-emerald-700 hover:bg-emerald-100',
     amber: 'text-amber-700 hover:bg-amber-100',
     indigo: 'text-indigo-700 hover:bg-indigo-100',
-    pink: 'text-pink-700 hover:bg-pink-100',
+    orange: 'text-orange-700 hover:bg-orange-100',
   };
   return (
     <button
