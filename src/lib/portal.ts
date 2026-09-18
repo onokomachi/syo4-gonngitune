@@ -10,7 +10,7 @@
  */
 import { createPusher, pushEvents, type PushRow, type EventRow } from 'learning-app-kit/sync';
 
-export const APP_ID = 'hitotsunohana';
+export const APP_ID = 'gongitsune';
 
 /**
  * 環境変数を安全に読む。
@@ -74,7 +74,7 @@ interface HistoryLike {
 }
 
 /** どこまで送ったか。成功したときだけ進める（失敗したら次に送り直す） */
-const MARK = 'hitotsunohana_sent_ts_v1';
+const MARK = 'gongitsune_sent_ts_v1';
 const getMark = (): number => {
   try { const v = Number(localStorage.getItem(MARK)); return Number.isFinite(v) && v > 0 ? v : 0; }
   catch { return 0; }
