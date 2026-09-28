@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, type ReactNode, type TouchEvent as ReactTo
 import {
   PawPrint, BookOpen, HelpCircle, PenTool, Layers, GitCompare,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle, Lightbulb, Star,
-  Sprout, Flame, RotateCcw, Home
+  Sprout, Flame, RotateCcw, Home, ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   pages, questions, kanjiList, structure, contrastChips, rubyMap,
-  type Kanji, type Paragraph, type ContrastChip, type Question
+  SKILLS, SKILL_ORDER, MISREADS,
+  type Kanji, type Paragraph, type ContrastChip, type Question, type Skill
 } from './data';
 import { TitleScreen, OnboardingSlides } from './TitleScreen';
 import { MascotPinto, SpeechBubble } from './Mascot';
@@ -60,6 +61,48 @@ const WHO_LABEL: Record<NonNullable<Paragraph['feeling']>['who'], string> = {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+// 読みの力ごとの色（問題の上に出す小さな札）
+const SKILL_CHIP: Record<Skill, string> = {
+  kotoba: 'bg-sky-100 text-sky-700 border-sky-200',
+  yousu: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  kimochi: 'bg-rose-100 text-rose-700 border-rose-200',
+  henka: 'bg-violet-100 text-violet-700 border-violet-200',
+  kangae: 'bg-amber-100 text-amber-700 border-amber-200',
+};
+
+// 場面の中では「ことば → ようす → 気持ち → うつりかわり → まとめ」の順に出す
+const bySkill = (a: Question, b: Question) =>
+  SKILL_ORDER.indexOf(a.skill) - SKILL_ORDER.indexOf(b.skill);
+
+const TEST_SIZE = 10;
+
+// まとめテストの10問。紙の単元テストと同じく、どの場面からも出し、読みの力もかたよらせない。
+// 記述は自分で見くらべる形なので、テストには入れない。
+function buildTestQueue(): Question[] {
+  const pool = questions.filter(q => q.type !== 'free');
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const picked: Question[] = [];
+  for (const p of pages) {
+    const q = shuffled.find(x => x.pageId === p.id);
+    if (q) picked.push(q);
+  }
+  const count = (s: Skill) => picked.filter(q => q.skill === s).length;
+  while (picked.length < Math.min(TEST_SIZE, pool.length)) {
+    const rest = shuffled.filter(q => !picked.includes(q));
+    // まだ少ない力の問題から先に足す
+    rest.sort((a, b) => count(a.skill) - count(b.skill));
+    picked.push(rest[0]!);
+  }
+  return picked.sort((a, b) => a.pageId - b.pageId || bySkill(a, b));
+}
+
+// 答えの文（テストでまちがえたときに見せる）
+function answerText(q: Question): string {
+  if (q.type === 'choice' && typeof q.answer === 'number') return q.choices?.[q.answer] ?? '';
+  if (Array.isArray(q.answer)) return q.answer[0] ?? '';
+  return '';
+}
+
 // 周回バッジ: 1=銀 2=金 3=プラチナ 4+=虹
 function cycleBadge(cycle: number): { label: string; cls: string; icon: string } {
   if (cycle >= 4) return { label: `${cycle}周目`, cls: 'bg-gradient-to-r from-pink-400 via-yellow-400 to-sky-400 text-white border-pink-300', icon: '🌈' };
@@ -90,6 +133,11 @@ export default function App() {
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<Question[]>([]);
   const [reviewIdx, setReviewIdx] = useState(0);
+  // ふりかえり（まちがえた問題）か、まとめテストか
+  const [sessionKind, setSessionKind] = useState<'review' | 'test'>('review');
+  const [testResults, setTestResults] = useState<Record<number, boolean>>({});
+  const [testQuestions, setTestQuestions] = useState<Question[]>([]);
+  const [showTestResult, setShowTestResult] = useState(false);
 
   // ── Learning state ──────────────────────────────────────────────────────────
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -110,6 +158,8 @@ export default function App() {
   const [hintLevel, setHintLevel] = useState<0 | 1 | 2 | 3>(0);
   const [freeTextAnswer, setFreeTextAnswer] = useState('');
   const [showSampleAnswer, setShowSampleAnswer] = useState(false);
+  const [lastChoice, setLastChoice] = useState<number | null>(null);
+  const [selfCheck, setSelfCheck] = useState<'ok' | 'retry' | null>(null);
 
   // Structure mode
   const [expandedPara, setExpandedPara] = useState<number | null>(null);
@@ -134,9 +184,10 @@ export default function App() {
 
   // Active question depends on mode
   const currentPage = pages[currentPageIndex];
-  const pageQuestions = questions.filter(q => q.pageId === currentPage.id);
+  const pageQuestions = questions.filter(q => q.pageId === currentPage.id).sort(bySkill);
   const normalQuestion = pageQuestions[currentQuestionIndex];
   const currentQuestion: Question | undefined = reviewMode ? reviewQueue[reviewIdx] : normalQuestion;
+  const isTest = reviewMode && sessionKind === 'test';
 
   // ── localStorage init ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -234,6 +285,8 @@ export default function App() {
     setHintLevel(0);
     setFreeTextAnswer('');
     setShowSampleAnswer(false);
+    setLastChoice(null);
+    setSelfCheck(null);
     setSelectedKanji(null);
     setCurrentQuestionIndex(0);
     setCustomSelection(null);
@@ -265,7 +318,10 @@ export default function App() {
       setClearCount(prev => ({ ...prev, [questionId]: (prev[questionId] ?? 0) + 1 }));
     }
     const newCount = (clearCount[questionId] ?? 0) + (isFirstSolveThisCycle ? 1 : 0);
-    const msg = !isFirstSolveThisCycle ? 'もう一度せいかい！しっかり身についてるね！'
+    const sceneDone = !reviewMode && isFirstSolveThisCycle &&
+      pageQuestions.every(q => q.id === questionId || solvedQuestions.includes(q.id));
+    const msg = sceneDone ? 'この場面の問題、ぜんぶできた！'
+      : !isFirstSolveThisCycle ? 'もう一度せいかい！しっかり身についてるね！'
       : newCount >= 3 ? `すごい！${newCount}周目せいかい！マスターだね！`
       : newCount === 2 ? 'よくできた！2周目もせいかい！'
       : 'すごい！正解！よくできたね！';
@@ -287,7 +343,7 @@ export default function App() {
       }
       return [...prev, { questionId, wrongCount: 1, lastWrong: today }];
     });
-    showMascot('encouraging', 'おしい！ヒントを見てもう一度チャレンジ！');
+    showMascot('encouraging', isTest ? 'つぎの問題で取り返そう！' : 'おしい！ヒントを見てもう一度チャレンジ！');
   };
 
   // ── Review queue builder ─────────────────────────────────────────────────────
@@ -301,33 +357,85 @@ export default function App() {
 
   const reviewCount = buildReviewQueue().length;
 
-  const handleStartReview = () => {
-    const queue = buildReviewQueue();
-    if (queue.length === 0) return;
-    setReviewQueue(queue);
-    setReviewIdx(0);
-    setReviewMode(true);
+  // まちがえた回数がいちばん多い「読みの力」。タイトル画面で「にがて」として知らせる
+  const weakSkill: Skill | null = (() => {
+    const tally = new Map<Skill, number>();
+    for (const e of wrongLog) {
+      const q = questions.find(x => x.id === e.questionId);
+      if (q && !solvedQuestions.includes(q.id)) tally.set(q.skill, (tally.get(q.skill) ?? 0) + e.wrongCount);
+    }
+    let best: Skill | null = null;
+    for (const [k, v] of tally) if (best === null || v > (tally.get(best) ?? 0)) best = k;
+    return best;
+  })();
+
+  const resetQuizUi = () => {
     setQuizFeedback(null);
     setHintLevel(0);
     setFreeTextAnswer('');
     setShowSampleAnswer(false);
     setCustomSelection(null);
+    setLastChoice(null);
+    setSelfCheck(null);
+  };
+
+  const startSession = (kind: 'review' | 'test', queue: Question[]) => {
+    if (queue.length === 0) return;
+    setSessionKind(kind);
+    setReviewQueue(queue);
+    setReviewIdx(0);
+    setReviewMode(true);
+    setMode('quiz');
+    resetQuizUi();
+    setScreen('learn');
+  };
+
+  const handleStartReview = () => {
+    // にがてな力の問題から先に出す
+    const queue = buildReviewQueue().sort((a, b) =>
+      (a.skill === weakSkill ? 0 : 1) - (b.skill === weakSkill ? 0 : 1) || a.pageId - b.pageId);
+    startSession('review', queue);
+  };
+
+  const handleStartTest = () => {
+    const queue = buildTestQueue();
+    setTestQuestions(queue);
+    setTestResults({});
+    startSession('test', queue);
+    showMascot('serious', 'ここからは本気モードだ…！');
+  };
+
+  // 授業で読んだ場面の問題から始める
+  const handleStartScene = (pageIndex: number) => {
+    setReviewMode(false);
+    setCurrentPageIndex(pageIndex);
+    setCurrentQuestionIndex(0);
+    resetQuizUi();
+    setMode('quiz');
     setScreen('learn');
   };
 
   const handleReviewNext = () => {
     if (reviewIdx < reviewQueue.length - 1) {
       setReviewIdx(i => i + 1);
-      setQuizFeedback(null);
-      setHintLevel(0);
-      setFreeTextAnswer('');
-      setShowSampleAnswer(false);
-      setCustomSelection(null);
+      resetQuizUi();
+      if (isTest) setMascotExpression('serious');
     } else {
       setReviewMode(false);
       setReviewQueue([]);
-      showMascot('celebrating', 'ふりかえり完了！よくがんばった！');
+      resetQuizUi();
+      if (isTest) {
+        setShowTestResult(true);
+      } else {
+        showMascot('celebrating', 'ふりかえり完了！よくがんばった！');
+      }
     }
+  };
+
+  // テストの1回目の答えだけを結果に残す（やり直しで上書きしない）
+  const noteTestResult = (questionId: number, ok: boolean) => {
+    if (!isTest) return;
+    setTestResults(prev => (questionId in prev ? prev : { ...prev, [questionId]: ok }));
   };
 
   const currentKanjiList = kanjiList.filter(k => k.pageId === currentPage.id);
@@ -376,15 +484,13 @@ export default function App() {
   const handleNextQuestion = () => {
     if (currentQuestionIndex < pageQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
-      setQuizFeedback(null); setHintLevel(0);
-      setFreeTextAnswer(''); setShowSampleAnswer(false); setCustomSelection(null);
+      resetQuizUi();
     }
   };
   const handlePrevQuestion = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(prev => prev - 1);
-      setQuizFeedback(null); setHintLevel(0);
-      setFreeTextAnswer(''); setShowSampleAnswer(false); setCustomSelection(null);
+      resetQuizUi();
     }
   };
 
@@ -401,6 +507,7 @@ export default function App() {
   };
 
   const handleExtractAnswer = () => {
+    if (isTest && quizFeedback) return;
     const selectedText = getSelectedText().trim();
     if (!selectedText) {
       alert('本文の文字をタッチして選んでからボタンを押してね！');
@@ -425,32 +532,47 @@ export default function App() {
         return false;
       });
       setQuizFeedback(isCorrect ? 'correct' : 'incorrect');
+      noteTestResult(currentQuestion.id, isCorrect);
       if (isCorrect) {
         recordCorrect(currentQuestion.id);
       } else {
         recordWrong(currentQuestion.id);
-        if (hintLevel === 0) setHintLevel(1);
+        if (hintLevel === 0 && !isTest) setHintLevel(1);
       }
     }
     setCustomSelection(null);
   };
 
   const handleChoiceAnswer = (choiceIndex: number) => {
+    if (isTest && quizFeedback) return;
     if (currentQuestion?.type === 'choice') {
       const isCorrect = currentQuestion.answer === choiceIndex;
       setQuizFeedback(isCorrect ? 'correct' : 'incorrect');
+      setLastChoice(choiceIndex);
+      noteTestResult(currentQuestion.id, isCorrect);
       if (isCorrect) {
         recordCorrect(currentQuestion.id);
       } else {
         recordWrong(currentQuestion.id);
-        if (hintLevel === 0) setHintLevel(1);
+        if (hintLevel === 0 && !isTest) setHintLevel(1);
       }
     }
   };
 
+  // 記述は自動で採点できないので、解答例と「ポイント」を見くらべて自分で決める
   const handleFreeTextSubmit = () => {
     setShowSampleAnswer(true);
-    if (currentQuestion) recordCorrect(currentQuestion.id);
+    setSelfCheck(null);
+  };
+  const handleSelfCheck = (ok: boolean) => {
+    if (!currentQuestion || selfCheck) return;
+    setSelfCheck(ok ? 'ok' : 'retry');
+    if (ok) {
+      recordCorrect(currentQuestion.id);
+    } else {
+      recordWrong(currentQuestion.id);
+      showMascot('encouraging', 'ポイントを入れて、書き直してみよう！');
+    }
   };
 
   const handleTouchMove = (e: ReactTouchEvent) => {
@@ -663,7 +785,14 @@ export default function App() {
         cycleCount={cycleCount}
         masterCount={masterCount}
         cycleBadgeInfo={cycleBadge(cycleCount)}
-        onStart={() => setScreen('learn')}
+        weakSkillLabel={weakSkill ? SKILLS[weakSkill].label : null}
+        sceneProgress={pages.map(p => {
+          const qs = questions.filter(q => q.pageId === p.id);
+          return { title: p.pageNumber, label: p.paragraphRange, solved: qs.filter(q => solvedQuestions.includes(q.id)).length, total: qs.length };
+        })}
+        onStart={() => { setReviewMode(false); setScreen('learn'); }}
+        onStartScene={handleStartScene}
+        onStartTest={handleStartTest}
         onReview={handleStartReview}
         onShowOnboarding={() => setScreen('onboarding')}
       />
@@ -682,6 +811,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col font-sans text-stone-800">
+      {/* まとめテストの結果 */}
+      <AnimatePresence>
+        {showTestResult && (
+          <TestResult
+            questions={testQuestions}
+            results={testResults}
+            onRedo={() => {
+              setShowTestResult(false);
+              startSession('review', testQuestions.filter(q => !testResults[q.id]));
+            }}
+            onClose={() => { setShowTestResult(false); setScreen('title'); }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* All Clear Modal */}
       <AnimatePresence>
         {showAllClear && (
@@ -777,8 +921,8 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {reviewMode && (
-            <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-full text-xs font-bold border border-amber-200">
-              <RotateCcw size={12} />
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold border ${isTest ? 'bg-stone-800 text-white border-stone-800' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+              {isTest ? <ClipboardCheck size={12} /> : <RotateCcw size={12} />}
               {reviewIdx + 1}/{reviewQueue.length}
             </div>
           )}
@@ -861,8 +1005,10 @@ export default function App() {
               {reviewMode && (
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between items-center mb-3 pb-2 border-b border-amber-100">
-                    <h2 className="text-xl font-bold text-amber-600 flex items-center gap-2">
-                      <RotateCcw /> ふりかえり問題 {reviewIdx + 1} / {reviewQueue.length}
+                    <h2 className={`text-xl font-bold flex items-center gap-2 ${isTest ? 'text-stone-800' : 'text-amber-600'}`}>
+                      {isTest
+                        ? <><ClipboardCheck /> まとめテスト {reviewIdx + 1} / {reviewQueue.length}</>
+                        : <><RotateCcw /> ふりかえり問題 {reviewIdx + 1} / {reviewQueue.length}</>}
                     </h2>
                     {quizQuestion && (() => {
                       const cnt = clearCount[quizQuestion.id] ?? 0;
@@ -886,18 +1032,23 @@ export default function App() {
                     freeTextAnswer={freeTextAnswer}
                     showSampleAnswer={showSampleAnswer}
                     selectedCharCount={selectedCharCount}
+                    testMode={isTest}
+                    lastChoice={lastChoice}
+                    selfCheck={selfCheck}
                     onExtract={handleExtractAnswer}
                     onChoice={handleChoiceAnswer}
                     onFreeTextChange={setFreeTextAnswer}
                     onFreeTextSubmit={handleFreeTextSubmit}
+                    onSelfCheck={handleSelfCheck}
                     onHint={handleHint}
                   />}
                   <div className="mt-4 pt-4 border-t border-amber-100 flex justify-end">
                     <button
                       onClick={handleReviewNext}
-                      className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full transition-colors flex items-center gap-1"
+                      disabled={isTest && !quizFeedback}
+                      className={`px-6 py-2 text-white font-bold rounded-full transition-colors flex items-center gap-1 disabled:opacity-40 ${isTest ? 'bg-stone-800 hover:bg-stone-900' : 'bg-amber-500 hover:bg-amber-600'}`}
                     >
-                      {reviewIdx < reviewQueue.length - 1 ? '次の問題' : 'ふりかえり完了'} <ChevronRight size={18} />
+                      {reviewIdx < reviewQueue.length - 1 ? '次の問題' : isTest ? '結果を見る' : 'ふりかえり完了'} <ChevronRight size={18} />
                     </button>
                   </div>
                 </div>
@@ -994,10 +1145,14 @@ export default function App() {
                       freeTextAnswer={freeTextAnswer}
                       showSampleAnswer={showSampleAnswer}
                       selectedCharCount={selectedCharCount}
+                      testMode={false}
+                      lastChoice={lastChoice}
+                      selfCheck={selfCheck}
                       onExtract={handleExtractAnswer}
                       onChoice={handleChoiceAnswer}
                       onFreeTextChange={setFreeTextAnswer}
                       onFreeTextSubmit={handleFreeTextSubmit}
+                      onSelfCheck={handleSelfCheck}
                       onHint={handleHint}
                     />
                   ) : (
@@ -1203,10 +1358,14 @@ function QuizBody({
   freeTextAnswer,
   showSampleAnswer,
   selectedCharCount,
+  testMode,
+  lastChoice,
+  selfCheck,
   onExtract,
   onChoice,
   onFreeTextChange,
   onFreeTextSubmit,
+  onSelfCheck,
   onHint,
 }: {
   question: Question;
@@ -1217,14 +1376,29 @@ function QuizBody({
   freeTextAnswer: string;
   showSampleAnswer: boolean;
   selectedCharCount: number;
+  testMode: boolean;
+  lastChoice: number | null;
+  selfCheck: 'ok' | 'retry' | null;
   onExtract: () => void;
   onChoice: (idx: number) => void;
   onFreeTextChange: (v: string) => void;
   onFreeTextSubmit: () => void;
+  onSelfCheck: (ok: boolean) => void;
   onHint: () => void;
 }) {
+  // テストでは1回答えたら次へ。ふだんは何度でもやり直せる
+  const locked = testMode && quizFeedback !== null;
+  const misread = quizFeedback === 'incorrect' && question.type === 'choice' && lastChoice !== null
+    ? question.misread?.[lastChoice] ?? null
+    : null;
   return (
-    <div className="flex-1 flex flex-col gap-6">
+    <div className="flex-1 flex flex-col gap-5">
+      <div className="flex items-center gap-2 -mb-2">
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${SKILL_CHIP[question.skill]}`}>
+          {SKILLS[question.skill].label}
+        </span>
+        <span className="text-xs text-stone-400">{pages.find(p => p.id === question.pageId)?.paragraphRange}</span>
+      </div>
       <div className="bg-amber-50 p-6 rounded-xl text-lg font-medium text-stone-800 leading-relaxed whitespace-pre-line">
         {question.question}
       </div>
@@ -1264,7 +1438,7 @@ function QuizBody({
 
           <button
             onClick={onExtract}
-            disabled={selectedCharCount === 0}
+            disabled={selectedCharCount === 0 || locked}
             className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-8 rounded-full shadow-md transition-transform active:scale-95 text-lg w-full max-w-md disabled:opacity-40"
           >
             選んだ文字で答える
@@ -1274,15 +1448,22 @@ function QuizBody({
 
       {question.type === 'choice' && (
         <div className="flex flex-col gap-3">
-          {question.choices?.map((choice, idx) => (
-            <button
-              key={idx}
-              onClick={() => onChoice(idx)}
-              className="text-left p-4 rounded-xl border-2 border-stone-200 hover:border-amber-400 hover:bg-amber-50 transition-colors font-medium text-stone-700"
-            >
-              {choice}
-            </button>
-          ))}
+          {question.choices?.map((choice, idx) => {
+            const picked = quizFeedback !== null && lastChoice === idx;
+            const tone = picked
+              ? quizFeedback === 'correct' ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'
+              : 'border-stone-200 hover:border-amber-400 hover:bg-amber-50';
+            return (
+              <button
+                key={idx}
+                onClick={() => onChoice(idx)}
+                disabled={locked}
+                className={`text-left p-4 rounded-xl border-2 transition-colors font-medium text-stone-700 disabled:cursor-default ${tone}`}
+              >
+                <span className="text-stone-400 mr-1">{'①②③④'.charAt(idx)}</span>{choice}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1302,10 +1483,29 @@ function QuizBody({
             答え合わせをする
           </button>
           {showSampleAnswer && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-green-50 p-4 rounded-xl border border-green-200">
-              <p className="text-green-800 font-bold mb-2">解答例：</p>
-              <p className="text-green-700">{question.sampleAnswer}</p>
-              <p className="text-sm text-green-600 mt-2">※自分の考えと似ているところはあるかな？</p>
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-green-50 p-4 rounded-xl border border-green-200 flex flex-col gap-3">
+              <div>
+                <p className="text-green-800 font-bold mb-1">解答例</p>
+                <p className="text-green-700">{question.sampleAnswer}</p>
+              </div>
+              {question.points && (
+                <div className="bg-white rounded-lg p-3 border border-green-200">
+                  <p className="text-green-800 font-bold text-sm mb-1">ここが書けていればOK</p>
+                  <ul className="text-sm text-stone-700 list-none flex flex-col gap-1">
+                    {question.points.map(pt => <li key={pt}>□ {pt}</li>)}
+                  </ul>
+                </div>
+              )}
+              {selfCheck === null ? (
+                <div className="flex gap-2">
+                  <button onClick={() => onSelfCheck(true)} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded-full">書けた！</button>
+                  <button onClick={() => onSelfCheck(false)} className="flex-1 bg-white border-2 border-green-300 text-green-700 font-bold py-2 rounded-full">もう少し</button>
+                </div>
+              ) : (
+                <p className="text-sm font-bold text-green-700">
+                  {selfCheck === 'ok' ? 'よし！ 次の問題へ進もう。' : '足りないポイントを入れて書き直したら、もう一度「答え合わせ」をおそう。'}
+                </p>
+              )}
             </motion.div>
           )}
         </div>
@@ -1318,12 +1518,26 @@ function QuizBody({
           className={`p-4 rounded-xl flex items-center gap-3 font-bold text-lg ${quizFeedback === 'correct' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
         >
           {quizFeedback === 'correct' ? <CheckCircle2 size={28} /> : <XCircle size={28} />}
-          {quizFeedback === 'correct' ? '大正解！よくできました！' : 'ざんねん、もう一度考えてみよう！'}
+          {quizFeedback === 'correct' ? '大正解！よくできました！' : testMode ? 'ざんねん！' : 'ざんねん、もう一度考えてみよう！'}
         </motion.div>
       )}
 
+      {/* まちがえた選択肢の「読みまちがいの型」 */}
+      {misread && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-orange-800">
+          <span className="font-bold">読み方のコツ：</span>{MISREADS[misread].advice}
+        </div>
+      )}
+
+      {/* テストでまちがえたときは、答えを見せて次へ */}
+      {locked && quizFeedback === 'incorrect' && (
+        <div className="bg-stone-100 border border-stone-200 rounded-xl p-3 text-sm text-stone-700">
+          <span className="font-bold">答え：</span>{answerText(question)}
+        </div>
+      )}
+
       {/* Tiered hint */}
-      {hintLevel > 0 && hintText && (
+      {!testMode && hintLevel > 0 && hintText && (
         <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex gap-3 text-indigo-800">
           <Lightbulb className="shrink-0 text-indigo-500 mt-1" />
           <div>
@@ -1333,7 +1547,7 @@ function QuizBody({
         </div>
       )}
 
-      {hintLevel < 3 && (
+      {!testMode && hintLevel < 3 && (
         <button
           onClick={onHint}
           className="flex items-center gap-2 self-start text-indigo-500 hover:text-indigo-700 text-sm font-bold border border-indigo-200 hover:border-indigo-400 rounded-full px-4 py-2 transition-colors"
@@ -1343,6 +1557,75 @@ function QuizBody({
         </button>
       )}
     </div>
+  );
+}
+
+// ── TestResult ───────────────────────────────────────────────────────────────
+// まとめテストの結果。点数や割合ではなく「読みの力ごとに、いくつできたか」と
+// 「つぎに何をするか」を出す（学級ポータル全体の方針）。
+function TestResult({
+  questions: qs, results, onRedo, onClose,
+}: {
+  questions: Question[];
+  results: Record<number, boolean>;
+  onRedo: () => void;
+  onClose: () => void;
+}) {
+  const done = qs.filter(q => results[q.id]).length;
+  const wrong = qs.filter(q => !results[q.id]);
+  const rows = SKILL_ORDER
+    .map(s => ({ s, total: qs.filter(q => q.skill === s).length, ok: qs.filter(q => q.skill === s && results[q.id]).length }))
+    .filter(r => r.total > 0);
+  const weak = rows.filter(r => r.ok < r.total).sort((a, b) => (a.ok / a.total) - (b.ok / b.total))[0];
+  const weakScenes = [...new Set(wrong.map(q => pages.find(p => p.id === q.pageId)?.paragraphRange))].filter(Boolean);
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-3xl p-6 flex flex-col items-center gap-4 shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+      >
+        <MascotPinto expression={wrong.length === 0 ? 'celebrating' : 'happy'} size={96} />
+        <h2 className="text-2xl font-black text-stone-800">まとめテスト おわり！</h2>
+        <p className="text-stone-600">{qs.length}問中 <span className="font-black text-orange-600 text-xl">{done}問</span> できたよ</p>
+
+        <div className="w-full flex flex-col gap-2">
+          {rows.map(r => (
+            <div key={r.s} className="flex items-center gap-2">
+              <span className={`text-xs font-bold px-2 py-1 rounded-full border w-36 text-center shrink-0 ${SKILL_CHIP[r.s]}`}>{SKILLS[r.s].label}</span>
+              <span className="flex gap-1">
+                {Array.from({ length: r.total }, (_, i) => (
+                  <span key={i} className={`w-5 h-5 rounded-full border-2 ${i < r.ok ? 'bg-orange-400 border-orange-400' : 'border-stone-300'}`} />
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {weak ? (
+          <div className="w-full bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-stone-700">
+            <p className="font-bold text-orange-700 mb-1">つぎにやること</p>
+            <p>「{SKILLS[weak.s].label}」の問題をもう一度。{SKILLS[weak.s].desc}ようになろう。</p>
+            {weakScenes.length > 0 && <p className="mt-1">読み直すとよい場面：{weakScenes.join('・')}</p>}
+          </div>
+        ) : (
+          <p className="text-sm font-bold text-emerald-600">ぜんぶできた！ テストもばっちりだね。</p>
+        )}
+
+        <div className="w-full flex flex-col gap-2">
+          {wrong.length > 0 && (
+            <button onClick={onRedo} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-full">
+              まちがえた{wrong.length}問を、ヒントつきでやり直す
+            </button>
+          )}
+          <button onClick={onClose} className="w-full bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold py-2 rounded-full text-sm">
+            タイトルへもどる
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
