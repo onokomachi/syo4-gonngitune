@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "verify": "tsx scripts/verify-data.ts",
+    "catalog": "tsx scripts/export-catalog.ts",
+    "check": "npm run lint && npm run verify && npm run build"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -16,7 +19,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "learning-app-kit": "https://github.com/onokomachi/learning-app-kit/archive/c641871954b10c218b083d072e4850f45a93b839.tar.gz",
+    "learning-app-kit": "https://github.com/onokomachi/learning-app-kit/archive/f02fa92c41208c998c722b2b038af487f367c102.tar.gz",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
