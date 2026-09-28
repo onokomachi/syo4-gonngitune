@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronLeft, Flame, BookOpen, RotateCcw, Leaf } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Flame, BookOpen, RotateCcw, Leaf, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MascotPinto, SpeechBubble } from './Mascot';
-import { questions } from './data';
+import { questions, type Skill } from './data';
 
 interface SceneProgress {
   title: string;  // 例: ごんのいたずら
   label: string;  // 例: 場面一
   solved: number;
   total: number;
+}
+
+interface SkillProgress {
+  skill: Skill;
+  label: string;
+  desc: string;
+  solved: number;
+  total: number;
+  weak: boolean;
 }
 
 interface TitleScreenProps {
@@ -20,22 +29,26 @@ interface TitleScreenProps {
   cycleBadgeInfo: { label: string; cls: string; icon: string };
   weakSkillLabel: string | null;
   sceneProgress: SceneProgress[];
+  skillProgress: SkillProgress[];
   onStart: () => void;
   onStartScene: (pageIndex: number) => void;
+  onStartSkill: (skill: Skill) => void;
   onStartTest: () => void;
   onReview: () => void;
   onShowOnboarding: () => void;
 }
 
-// タイトル画面の入口は3つだけ。
+// タイトル画面の入口。
 //   ① きょう読んだ場面の問題（授業の後半に使う）
-//   ② まとめテスト（単元の終わり・テスト前に使う）
-//   ③ ふりかえり（まちがえた問題を、次の日以降にもう一度）
+//   ② 身につけたい力でえらぶ（入口は1つ。中で5つの力から選ぶ。全部の場面から出る）
+//   ③ まとめテスト（単元の終わり・テスト前に使う）
+//   ④ ふりかえり（まちがえた問題を、次の日以降にもう一度）
 export function TitleScreen({
   solvedCount, streak, reviewCount, cycleCount, masterCount, cycleBadgeInfo,
-  weakSkillLabel, sceneProgress, onStart, onStartScene, onStartTest, onReview, onShowOnboarding,
+  weakSkillLabel, sceneProgress, skillProgress, onStart, onStartScene, onStartSkill, onStartTest, onReview, onShowOnboarding,
 }: TitleScreenProps) {
   const [bubbleVisible, setBubbleVisible] = useState(true);
+  const [skillPicker, setSkillPicker] = useState(false);
   const total = questions.length;
   const progress = total > 0 ? solvedCount / total : 0;
 
@@ -52,6 +65,50 @@ export function TitleScreen({
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-50 rounded-full -translate-y-1/2 translate-x-1/2 opacity-60" />
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-emerald-50 rounded-full translate-y-1/2 -translate-x-1/2 opacity-60" />
       </div>
+
+      <AnimatePresence>
+        {skillPicker && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setSkillPicker(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }}
+              className="bg-white rounded-3xl p-5 w-full max-w-md shadow-2xl flex flex-col gap-3"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <Target className="text-violet-500" />
+                <h2 className="text-xl font-black text-stone-800">どの力を練習する？</h2>
+              </div>
+              <p className="text-xs text-stone-500 -mt-1">場面一から順に、その力の問題だけが出るよ。</p>
+              {skillProgress.map(sp => (
+                <button
+                  key={sp.skill}
+                  onClick={() => { setSkillPicker(false); onStartSkill(sp.skill); }}
+                  className="text-left rounded-2xl border-2 border-stone-200 hover:border-violet-300 hover:bg-violet-50 px-4 py-3 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-stone-700">{sp.label}</span>
+                    <span className="text-xs text-stone-400">{sp.total}問</span>
+                    {sp.weak && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full">まちがいが多い</span>}
+                  </div>
+                  <div className="text-xs text-stone-500 mt-0.5">{sp.desc}</div>
+                  <div className="flex gap-0.5 mt-2" aria-label={`${sp.total}問中${sp.solved}問できた`}>
+                    {Array.from({ length: sp.total }, (_, k) => (
+                      <span key={k} className={`w-2 h-2 rounded-full ${k < sp.solved ? 'bg-violet-400' : 'bg-stone-200'}`} />
+                    ))}
+                  </div>
+                </button>
+              ))}
+              <button onClick={() => setSkillPicker(false)} className="text-stone-400 hover:text-stone-600 text-sm underline self-center">
+                とじる
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="relative z-10 flex flex-col items-center gap-5 max-w-xl w-full">
         {/* Header + mascot */}
@@ -107,7 +164,21 @@ export function TitleScreen({
           </div>
         </div>
 
-        {/* ② まとめテスト ③ ふりかえり */}
+        {/* ② 身につけたい力でえらぶ（入口は1つ） */}
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setSkillPicker(true)}
+          className="w-full -mt-2 rounded-2xl border-2 border-violet-200 bg-violet-50 hover:bg-violet-100 px-4 py-3 flex items-center gap-3 text-left transition-colors"
+        >
+          <Target size={28} className="text-violet-500 shrink-0" />
+          <span className="flex-1">
+            <span className="block font-black text-stone-700">身につけたい力でえらぶ</span>
+            <span className="block text-xs text-stone-500">ことばの意味・気持ちとわけ などを、全部の場面から練習</span>
+          </span>
+          <ChevronRight size={20} className="text-violet-400" />
+        </motion.button>
+
+        {/* ③ まとめテスト ④ ふりかえり */}
         <div className="w-full grid grid-cols-2 gap-2">
           <motion.button
             whileTap={{ scale: 0.97 }}
@@ -188,7 +259,7 @@ const SLIDES = [
   {
     icon: <BookOpen size={80} className="text-emerald-500" />,
     title: 'きょう読んだ場面をえらぼう',
-    body: '授業で読んだ場面をえらぶと、その場面の問題が「ことばの意味 → ようす → 気持ち → うつりかわり → まとめ」の順に出てくるよ。',
+    body: '授業で読んだ場面をえらぶと、その場面の問題が「ことばの意味 → ようす → 気持ち → うつりかわり → まとめ」の順に出てくるよ。「身につけたい力でえらぶ」から、力ごとに練習することもできるよ。',
     color: 'bg-emerald-50 border-emerald-200',
     accent: 'text-emerald-600',
   },

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react';
 import {
   PawPrint, BookOpen, HelpCircle, PenTool, Layers, GitCompare,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle, Lightbulb, Star,
-  Sprout, Flame, RotateCcw, Home, ClipboardCheck
+  Sprout, Flame, RotateCcw, Home, ClipboardCheck, Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -24,7 +24,10 @@ interface WrongEntry {
   questionId: number;
   wrongCount: number;
   lastWrong: string; // YYYY-MM-DD
+  cleared?: string;  // まちがえたあと、別の日に1回でできた日。ふりかえりから外す
 }
+
+type SessionKind = 'review' | 'test' | 'skill';
 
 // 場面の区切り（物語の展開）ごとの色
 const SECTION_COLOR: Record<Paragraph['section'], string> = {
@@ -75,25 +78,63 @@ const bySkill = (a: Question, b: Question) =>
   SKILL_ORDER.indexOf(a.skill) - SKILL_ORDER.indexOf(b.skill);
 
 const TEST_SIZE = 10;
+const LAST_TEST_KEY = 'gongitsune_last_test_v1';
+
+// ぬき出しは3回まで（ふだん）。当てずっぽうに選び直し続けて当てる、を止める
+const EXTRACT_MAX_TRIES = 3;
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
 
 // まとめテストの10問。紙の単元テストと同じく、どの場面からも出し、読みの力もかたよらせない。
+// 前回のテストに出た問題は後回しにする（続けて受けても同じ問題にならない）。
 // 記述は自分で見くらべる形なので、テストには入れない。
 function buildTestQueue(): Question[] {
+  let last: number[] = [];
+  try { last = JSON.parse(localStorage.getItem(LAST_TEST_KEY) ?? '[]'); } catch { /* noop */ }
   const pool = questions.filter(q => q.type !== 'free');
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const fresh = shuffle(pool.filter(q => !last.includes(q.id)));
+  const shuffled = [...fresh, ...shuffle(pool.filter(q => last.includes(q.id)))];
   const picked: Question[] = [];
   for (const p of pages) {
     const q = shuffled.find(x => x.pageId === p.id);
     if (q) picked.push(q);
   }
   const count = (s: Skill) => picked.filter(q => q.skill === s).length;
+  const isLast = (q: Question) => (last.includes(q.id) ? 1 : 0);
   while (picked.length < Math.min(TEST_SIZE, pool.length)) {
     const rest = shuffled.filter(q => !picked.includes(q));
-    // まだ少ない力の問題から先に足す
-    rest.sort((a, b) => count(a.skill) - count(b.skill));
+    // まだ少ない力の問題から先に足す。同じなら、前回出ていない問題を先に
+    rest.sort((a, b) => count(a.skill) - count(b.skill) || isLast(a) - isLast(b));
     picked.push(rest[0]!);
   }
+  try { localStorage.setItem(LAST_TEST_KEY, JSON.stringify(picked.map(q => q.id))); } catch { /* noop */ }
   return picked.sort((a, b) => a.pageId - b.pageId || bySkill(a, b));
+}
+
+// ぬき出しの答え合わせ。選びすぎ（本文をまるごと選ぶ等）・短すぎは不正解
+function judgeExtract(q: Question, selected: string): 'ok' | 'long' | 'short' | 'wrong' {
+  const answers = Array.isArray(q.answer) ? q.answer.map(a => a.trim()) : [];
+  const sel = selected;
+  if (q.charCount) return answers.some(a => sel.length === q.charCount && sel === a) ? 'ok' : 'wrong';
+  for (const a of answers) {
+    if (sel === a) return 'ok';
+    // 正解の±20%（最低2文字）まで、境界のタップのずれとして許す
+    const tolerance = Math.max(2, Math.ceil(a.length * 0.2));
+    if (a.includes(sel) && sel.length >= a.length - tolerance) return 'ok';
+    if (sel.includes(a) && sel.length <= a.length + tolerance) return 'ok';
+  }
+  const longest = Math.max(...answers.map(a => a.length));
+  const shortest = Math.min(...answers.map(a => a.length));
+  if (sel.length > longest + Math.max(2, Math.ceil(longest * 0.2))) return 'long';
+  if (sel.length < Math.max(2, shortest - Math.max(2, Math.ceil(shortest * 0.2)))) return 'short';
+  return 'wrong';
 }
 
 // 答えの文（テストでまちがえたときに見せる）
@@ -134,7 +175,8 @@ export default function App() {
   const [reviewQueue, setReviewQueue] = useState<Question[]>([]);
   const [reviewIdx, setReviewIdx] = useState(0);
   // ふりかえり（まちがえた問題）か、まとめテストか
-  const [sessionKind, setSessionKind] = useState<'review' | 'test'>('review');
+  const [sessionKind, setSessionKind] = useState<SessionKind>('review');
+  const [sessionSkill, setSessionSkill] = useState<Skill | null>(null);
   const [testResults, setTestResults] = useState<Record<number, boolean>>({});
   const [testQuestions, setTestQuestions] = useState<Question[]>([]);
   const [showTestResult, setShowTestResult] = useState(false);
@@ -159,6 +201,11 @@ export default function App() {
   const [freeTextAnswer, setFreeTextAnswer] = useState('');
   const [showSampleAnswer, setShowSampleAnswer] = useState(false);
   const [lastChoice, setLastChoice] = useState<number | null>(null);
+  const [wrongChoices, setWrongChoices] = useState<number[]>([]);
+  const [extractTries, setExtractTries] = useState(0);
+  const [extractNote, setExtractNote] = useState<'long' | 'short' | null>(null);
+  // まちがえたあとの正解（メダルにならない）かどうか
+  const [lateCorrect, setLateCorrect] = useState(false);
   const [selfCheck, setSelfCheck] = useState<'ok' | 'retry' | null>(null);
 
   // Structure mode
@@ -188,6 +235,9 @@ export default function App() {
   const normalQuestion = pageQuestions[currentQuestionIndex];
   const currentQuestion: Question | undefined = reviewMode ? reviewQueue[reviewIdx] : normalQuestion;
   const isTest = reviewMode && sessionKind === 'test';
+  // ぬき出しの答えを出しきった（テストは1回、ふだんは3回）
+  const extractLocked = currentQuestion?.type === 'extract' && quizFeedback !== 'correct' &&
+    (isTest ? quizFeedback !== null : extractTries >= EXTRACT_MAX_TRIES);
 
   // ── localStorage init ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -286,6 +336,10 @@ export default function App() {
     setFreeTextAnswer('');
     setShowSampleAnswer(false);
     setLastChoice(null);
+    setWrongChoices([]);
+    setExtractTries(0);
+    setExtractNote(null);
+    setLateCorrect(false);
     setSelfCheck(null);
     setSelectedKanji(null);
     setCurrentQuestionIndex(0);
@@ -311,6 +365,16 @@ export default function App() {
   const recordCorrect = (questionId: number) => {
     // 時刻つきの記録。まちがえた回数もここで確定する
     noteCorrect(questionId);
+    // きょうまちがえた問題は、選び直して当てても「できた」にしない。
+    // 別の日にもう一度とけたときに初めてメダルになる（ふりかえりで日をあけて解き直す）
+    const today = todayStr();
+    const wrongToday = wrongLog.some(e => e.questionId === questionId && e.lastWrong === today);
+    setLateCorrect(wrongToday);
+    if (wrongToday) {
+      showMascot('celebrating', 'せいかい！あしたもう一度とこう！');
+      return;
+    }
+    setWrongLog(prev => prev.map(e => e.questionId === questionId ? { ...e, cleared: today } : e));
     const isFirstSolveThisCycle = !solvedQuestions.includes(questionId);
     if (isFirstSolveThisCycle) {
       setSolvedQuestions(prev => [...prev, questionId]);
@@ -350,7 +414,7 @@ export default function App() {
   const buildReviewQueue = (): Question[] => {
     const today = todayStr();
     return wrongLog
-      .filter(e => e.lastWrong < today)
+      .filter(e => e.lastWrong < today && !(e.cleared && e.cleared >= e.lastWrong))
       .map(e => questions.find(q => q.id === e.questionId))
       .filter((q): q is Question => q != null);
   };
@@ -376,10 +440,14 @@ export default function App() {
     setShowSampleAnswer(false);
     setCustomSelection(null);
     setLastChoice(null);
+    setWrongChoices([]);
+    setExtractTries(0);
+    setExtractNote(null);
+    setLateCorrect(false);
     setSelfCheck(null);
   };
 
-  const startSession = (kind: 'review' | 'test', queue: Question[]) => {
+  const startSession = (kind: SessionKind, queue: Question[]) => {
     if (queue.length === 0) return;
     setSessionKind(kind);
     setReviewQueue(queue);
@@ -405,6 +473,12 @@ export default function App() {
     showMascot('serious', 'ここからは本気モードだ…！');
   };
 
+  // 身につけたい力ごとに、全部の場面から順に出す
+  const handleStartSkill = (skill: Skill) => {
+    setSessionSkill(skill);
+    startSession('skill', questions.filter(q => q.skill === skill).sort((a, b) => a.pageId - b.pageId || a.id - b.id));
+  };
+
   // 授業で読んだ場面の問題から始める
   const handleStartScene = (pageIndex: number) => {
     setReviewMode(false);
@@ -427,7 +501,7 @@ export default function App() {
       if (isTest) {
         setShowTestResult(true);
       } else {
-        showMascot('celebrating', 'ふりかえり完了！よくがんばった！');
+        showMascot('celebrating', sessionKind === 'skill' ? 'この力の問題、ひととおりできた！' : 'ふりかえり完了！よくがんばった！');
       }
     }
   };
@@ -507,30 +581,17 @@ export default function App() {
   };
 
   const handleExtractAnswer = () => {
-    if (isTest && quizFeedback) return;
+    if (extractLocked || quizFeedback === 'correct') return;
     const selectedText = getSelectedText().trim();
     if (!selectedText) {
       alert('本文の文字をタッチして選んでからボタンを押してね！');
       return;
     }
     if (currentQuestion?.type === 'extract' && Array.isArray(currentQuestion.answer)) {
-      const charCount = currentQuestion.charCount;
-      const isCorrect = currentQuestion.answer.some(ans => {
-        const sel = selectedText;
-        const a = ans.trim();
-        if (charCount) {
-          // 文字数指定問題: 文字数が一致し、かつテキストが一致すること
-          return sel.length === charCount && sel === a;
-        }
-        // 通常のぬき出し: 正解の±20%（最低2文字）のトレランス
-        if (sel === a) return true;
-        const tolerance = Math.max(2, Math.ceil(a.length * 0.2));
-        // 選択が正解の一部（正解の80%以上を選んでいればOK）
-        if (a.includes(sel) && sel.length >= a.length - tolerance) return true;
-        // 選択が正解より少しだけ長い（境界タップのずれ許容）
-        if (sel.includes(a) && sel.length <= a.length + tolerance) return true;
-        return false;
-      });
+      const verdict = judgeExtract(currentQuestion, selectedText);
+      const isCorrect = verdict === 'ok';
+      setExtractNote(verdict === 'long' || verdict === 'short' ? verdict : null);
+      if (!isCorrect) setExtractTries(n => n + 1);
       setQuizFeedback(isCorrect ? 'correct' : 'incorrect');
       noteTestResult(currentQuestion.id, isCorrect);
       if (isCorrect) {
@@ -545,10 +606,13 @@ export default function App() {
 
   const handleChoiceAnswer = (choiceIndex: number) => {
     if (isTest && quizFeedback) return;
+    if (quizFeedback === 'correct' || wrongChoices.includes(choiceIndex)) return;
     if (currentQuestion?.type === 'choice') {
       const isCorrect = currentQuestion.answer === choiceIndex;
       setQuizFeedback(isCorrect ? 'correct' : 'incorrect');
       setLastChoice(choiceIndex);
+      // 同じまちがいを連打できないように、えらんだまちがいは押せなくする
+      if (!isCorrect) setWrongChoices(prev => [...prev, choiceIndex]);
       noteTestResult(currentQuestion.id, isCorrect);
       if (isCorrect) {
         recordCorrect(currentQuestion.id);
@@ -792,6 +856,11 @@ export default function App() {
         })}
         onStart={() => { setReviewMode(false); setScreen('learn'); }}
         onStartScene={handleStartScene}
+        onStartSkill={handleStartSkill}
+        skillProgress={SKILL_ORDER.map(sk => {
+          const qs = questions.filter(q => q.skill === sk);
+          return { skill: sk, label: SKILLS[sk].label, desc: SKILLS[sk].desc, solved: qs.filter(q => solvedQuestions.includes(q.id)).length, total: qs.length, weak: sk === weakSkill };
+        })}
         onStartTest={handleStartTest}
         onReview={handleStartReview}
         onShowOnboarding={() => setScreen('onboarding')}
@@ -922,7 +991,7 @@ export default function App() {
         <div className="flex items-center gap-2 shrink-0">
           {reviewMode && (
             <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold border ${isTest ? 'bg-stone-800 text-white border-stone-800' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
-              {isTest ? <ClipboardCheck size={12} /> : <RotateCcw size={12} />}
+              {isTest ? <ClipboardCheck size={12} /> : sessionKind === 'skill' ? <Target size={12} /> : <RotateCcw size={12} />}
               {reviewIdx + 1}/{reviewQueue.length}
             </div>
           )}
@@ -1008,6 +1077,8 @@ export default function App() {
                     <h2 className={`text-xl font-bold flex items-center gap-2 ${isTest ? 'text-stone-800' : 'text-amber-600'}`}>
                       {isTest
                         ? <><ClipboardCheck /> まとめテスト {reviewIdx + 1} / {reviewQueue.length}</>
+                        : sessionKind === 'skill' && sessionSkill
+                        ? <><Target /> {SKILLS[sessionSkill].label} {reviewIdx + 1} / {reviewQueue.length}</>
                         : <><RotateCcw /> ふりかえり問題 {reviewIdx + 1} / {reviewQueue.length}</>}
                     </h2>
                     {quizQuestion && (() => {
@@ -1034,6 +1105,11 @@ export default function App() {
                     selectedCharCount={selectedCharCount}
                     testMode={isTest}
                     lastChoice={lastChoice}
+                    wrongChoices={wrongChoices}
+                    extractTries={extractTries}
+                    extractLocked={extractLocked}
+                    extractNote={extractNote}
+                    lateCorrect={lateCorrect}
                     selfCheck={selfCheck}
                     onExtract={handleExtractAnswer}
                     onChoice={handleChoiceAnswer}
@@ -1048,7 +1124,7 @@ export default function App() {
                       disabled={isTest && !quizFeedback}
                       className={`px-6 py-2 text-white font-bold rounded-full transition-colors flex items-center gap-1 disabled:opacity-40 ${isTest ? 'bg-stone-800 hover:bg-stone-900' : 'bg-amber-500 hover:bg-amber-600'}`}
                     >
-                      {reviewIdx < reviewQueue.length - 1 ? '次の問題' : isTest ? '結果を見る' : 'ふりかえり完了'} <ChevronRight size={18} />
+                      {reviewIdx < reviewQueue.length - 1 ? '次の問題' : isTest ? '結果を見る' : sessionKind === 'skill' ? 'おわる' : 'ふりかえり完了'} <ChevronRight size={18} />
                     </button>
                   </div>
                 </div>
@@ -1147,6 +1223,11 @@ export default function App() {
                       selectedCharCount={selectedCharCount}
                       testMode={false}
                       lastChoice={lastChoice}
+                      wrongChoices={wrongChoices}
+                      extractTries={extractTries}
+                      extractLocked={extractLocked}
+                      extractNote={extractNote}
+                      lateCorrect={lateCorrect}
                       selfCheck={selfCheck}
                       onExtract={handleExtractAnswer}
                       onChoice={handleChoiceAnswer}
@@ -1360,6 +1441,11 @@ function QuizBody({
   selectedCharCount,
   testMode,
   lastChoice,
+  wrongChoices,
+  extractTries,
+  extractLocked,
+  extractNote,
+  lateCorrect,
   selfCheck,
   onExtract,
   onChoice,
@@ -1378,6 +1464,11 @@ function QuizBody({
   selectedCharCount: number;
   testMode: boolean;
   lastChoice: number | null;
+  wrongChoices: number[];
+  extractTries: number;
+  extractLocked: boolean;
+  extractNote: 'long' | 'short' | null;
+  lateCorrect: boolean;
   selfCheck: 'ok' | 'retry' | null;
   onExtract: () => void;
   onChoice: (idx: number) => void;
@@ -1388,6 +1479,13 @@ function QuizBody({
 }) {
   // テストでは1回答えたら次へ。ふだんは何度でもやり直せる
   const locked = testMode && quizFeedback !== null;
+  // 選択肢の並びは、出すたびに入れかえる（「答えは③」と位置で覚えてしまうのを防ぐ）
+  const order = useMemo(
+    () => shuffle((question.choices ?? []).map((_, i) => i)),
+    [question.id], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // 答えを見せる：テストでまちがえたとき／ぬき出しを出しきったとき
+  const showAnswer = (locked && quizFeedback === 'incorrect') || extractLocked;
   const misread = quizFeedback === 'incorrect' && question.type === 'choice' && lastChoice !== null
     ? question.misread?.[lastChoice] ?? null
     : null;
@@ -1436,9 +1534,12 @@ function QuizBody({
             </div>
           )}
 
+          {!testMode && question.charCount === undefined && extractTries > 0 && !extractLocked && quizFeedback !== 'correct' && (
+            <p className="text-xs text-stone-500">あと{EXTRACT_MAX_TRIES - extractTries}回 答えられるよ</p>
+          )}
           <button
             onClick={onExtract}
-            disabled={selectedCharCount === 0 || locked}
+            disabled={selectedCharCount === 0 || locked || extractLocked || quizFeedback === 'correct'}
             className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-8 rounded-full shadow-md transition-transform active:scale-95 text-lg w-full max-w-md disabled:opacity-40"
           >
             選んだ文字で答える
@@ -1448,19 +1549,22 @@ function QuizBody({
 
       {question.type === 'choice' && (
         <div className="flex flex-col gap-3">
-          {question.choices?.map((choice, idx) => {
+          {order.map((idx, pos) => {
+            const choice = question.choices![idx]!;
             const picked = quizFeedback !== null && lastChoice === idx;
+            const struck = wrongChoices.includes(idx);
             const tone = picked
               ? quizFeedback === 'correct' ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'
+              : struck ? 'border-stone-200 bg-stone-100 opacity-50'
               : 'border-stone-200 hover:border-amber-400 hover:bg-amber-50';
             return (
               <button
                 key={idx}
                 onClick={() => onChoice(idx)}
-                disabled={locked}
+                disabled={locked || struck || quizFeedback === 'correct'}
                 className={`text-left p-4 rounded-xl border-2 transition-colors font-medium text-stone-700 disabled:cursor-default ${tone}`}
               >
-                <span className="text-stone-400 mr-1">{'①②③④'.charAt(idx)}</span>{choice}
+                <span className="text-stone-400 mr-1">{'①②③④'.charAt(pos)}</span>{choice}
               </button>
             );
           })}
@@ -1529,15 +1633,33 @@ function QuizBody({
         </div>
       )}
 
-      {/* テストでまちがえたときは、答えを見せて次へ */}
-      {locked && quizFeedback === 'incorrect' && (
+      {/* ぬき出しで、選び方そのものがずれているとき */}
+      {quizFeedback === 'incorrect' && extractNote && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-orange-800">
+          <span className="font-bold">読み方のコツ：</span>
+          {extractNote === 'long'
+            ? '長く選びすぎだよ。問題にぴったり合う部分だけを選ぼう。'
+            : '短すぎるよ。答えになる言葉を、切れ目まで選ぼう。'}
+        </div>
+      )}
+
+      {/* まちがえたあとで当てた正解は、メダルにしない */}
+      {quizFeedback === 'correct' && lateCorrect && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-sm text-sky-800">
+          まちがえたあとの正解なので、メダルはまだだよ。あした以降の「ふりかえり」で、1回でとけたらもらえるよ。
+        </div>
+      )}
+
+      {/* テストでまちがえたとき・ぬき出しを出しきったときは、答えを見せて次へ */}
+      {showAnswer && (
         <div className="bg-stone-100 border border-stone-200 rounded-xl p-3 text-sm text-stone-700">
+          {extractLocked && !testMode && <p className="font-bold mb-1">{EXTRACT_MAX_TRIES}回まちがえたので、答えをたしかめて、本文を読み直そう。</p>}
           <span className="font-bold">答え：</span>{answerText(question)}
         </div>
       )}
 
       {/* Tiered hint */}
-      {!testMode && hintLevel > 0 && hintText && (
+      {!testMode && !extractLocked && hintLevel > 0 && hintText && (
         <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex gap-3 text-indigo-800">
           <Lightbulb className="shrink-0 text-indigo-500 mt-1" />
           <div>
@@ -1547,7 +1669,7 @@ function QuizBody({
         </div>
       )}
 
-      {!testMode && hintLevel < 3 && (
+      {!testMode && !extractLocked && quizFeedback !== 'correct' && hintLevel < 3 && (
         <button
           onClick={onHint}
           className="flex items-center gap-2 self-start text-indigo-500 hover:text-indigo-700 text-sm font-bold border border-indigo-200 hover:border-indigo-400 rounded-full px-4 py-2 transition-colors"
