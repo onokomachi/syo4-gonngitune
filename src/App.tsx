@@ -15,6 +15,7 @@ import { MascotPinto, SpeechBubble } from './Mascot';
 import type { MascotExpression } from './Mascot';
 import { syncToPortal } from './lib/portal';
 import { noteCorrect, noteWrong, flushAbandoned, getHistory } from './lib/history';
+import { forceSolo } from 'learning-app-kit/sync';
 
 type Screen = 'title' | 'onboarding' | 'learn';
 type Mode = 'read' | 'quiz' | 'kanji' | 'structure' | 'contrast';
@@ -466,6 +467,8 @@ export default function App() {
   };
 
   const handleStartTest = () => {
+    // まとめテストは実力を測る場面。ペア（1台を2人）のままなら、ここでひとりに切り替える（算数の本番テストと同じ）
+    forceSolo();
     const queue = buildTestQueue();
     setTestQuestions(queue);
     setTestResults({});
