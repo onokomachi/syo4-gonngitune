@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { ChevronRight, ChevronLeft, Flame, BookOpen, RotateCcw, Leaf, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MascotPinto, SpeechBubble } from './Mascot';
+import { JoinSettingsRow } from 'learning-app-kit/react';
+
+/** 学級ポータルへの接続。つないでいないアプリでは JoinSettingsRow は何も出さない */
+const PORTAL = {
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+  supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+};
 import { questions, type Skill } from './data';
 
 interface SceneProgress {
@@ -233,6 +240,11 @@ export function TitleScreen({
               <Flame size={14} className="text-orange-500" />{streak}日
             </span>
           )}
+        </div>
+
+        <div className="w-full">
+          {/* がっきゅうコード。はじめの画面で「入れずに つかう」を押した子も、ここから入れられる。入れた子は番号が出る */}
+          <JoinSettingsRow config={PORTAL} />
         </div>
 
         <div className="flex gap-4 items-center">
