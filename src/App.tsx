@@ -991,7 +991,7 @@ export default function App() {
         {/* Left: Text Viewer */}
         <div className="w-3/5 bg-white m-2 rounded-2xl shadow-sm border border-stone-200 flex flex-col relative">
           <div className="absolute top-2 left-3 text-stone-400 font-medium text-sm z-10">
-            p.{displayPage.pageNumber}
+            {displayPage.pageNumber}
           </div>
           <div className="absolute top-2 right-3 text-[10px] text-teal-600 font-bold bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full z-10">
             {displayPage.paragraphRange}
