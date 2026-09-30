@@ -10,6 +10,7 @@ const PORTAL = {
   supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 };
 import { questions, type Skill } from './data';
+import { UNIT } from './unit';
 
 interface SceneProgress {
   title: string;  // 例: ごんのいたずら
@@ -134,12 +135,12 @@ export function TitleScreen({
           <div>
             <div className="flex items-center gap-2 mb-1 text-orange-400 text-sm font-bold tracking-widest">
               <Leaf size={16} />
-              <span>光村図書 国語 4年</span>
+              <span>{UNIT.publisher}</span>
             </div>
             <h1 className="text-4xl font-black text-stone-800 leading-tight">
-              ごん<span className="text-orange-500">ぎつね</span>
+              {UNIT.titleMain}<span className="text-orange-500">{UNIT.titleAccent}</span>
             </h1>
-            <p className="text-stone-500 mt-1 text-sm">新美 南吉</p>
+            <p className="text-stone-500 mt-1 text-sm">{UNIT.author}</p>
           </div>
         </div>
 
@@ -263,8 +264,8 @@ export function TitleScreen({
 const SLIDES = [
   {
     icon: <MascotPinto expression="happy" size={110} />,
-    title: 'ごんといっしょに！',
-    body: 'ひとりぼっちの小ぎつね「ごん」がいっしょに学ぶよ。まちがえても大丈夫！ヒントを出してくれるから、あきらめないでね。',
+    title: `${UNIT.mascotName}といっしょに！`,
+    body: UNIT.onboardingHello,
     color: 'bg-orange-50 border-orange-200',
     accent: 'text-orange-600',
   },
@@ -278,7 +279,7 @@ const SLIDES = [
   {
     icon: <MascotPinto expression="thinking" size={110} />,
     title: 'ヒントと「読み方のコツ」',
-    body: 'わからないときはヒントボタン。まちがえたときは、ごんが「読み方のコツ」を教えてくれるよ。',
+    body: `わからないときはヒントボタン。まちがえたときは、${UNIT.mascotName}が「読み方のコツ」を教えてくれるよ。`,
     color: 'bg-amber-50 border-amber-200',
     accent: 'text-amber-600',
   },
