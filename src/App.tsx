@@ -364,7 +364,7 @@ export default function App() {
     const newCount = (clearCount[questionId] ?? 0) + (isFirstSolveThisCycle ? 1 : 0);
     const sceneDone = !reviewMode && isFirstSolveThisCycle &&
       pageQuestions.every(q => q.id === questionId || solvedQuestions.includes(q.id));
-    const msg = sceneDone ? 'この場面の問題、ぜんぶできた！'
+    const msg = sceneDone ? `この${UNIT.sceneWord}の問題、ぜんぶできた！`
       : !isFirstSolveThisCycle ? 'もう一度せいかい！しっかり身についてるね！'
       : newCount >= 3 ? `すごい！${newCount}周目せいかい！マスターだね！`
       : newCount === 2 ? 'よくできた！2周目もせいかい！'
@@ -979,7 +979,7 @@ export default function App() {
             <ModeButton active={mode === 'read'} onClick={() => { setReviewMode(false); setMode('read'); }} icon={<BookOpen size={16} />} label="読む" color="emerald" />
             <ModeButton active={mode === 'quiz' || reviewMode} onClick={() => { setReviewMode(false); setMode('quiz'); }} icon={<HelpCircle size={16} />} label="問題" color="amber" />
             <ModeButton active={mode === 'kanji'} onClick={() => { setReviewMode(false); setMode('kanji'); }} icon={<PenTool size={16} />} label="漢字" color="indigo" />
-            <ModeButton active={mode === 'structure'} onClick={() => { setReviewMode(false); setMode('structure'); }} icon={<Layers size={16} />} label="場面" color="emerald" />
+            <ModeButton active={mode === 'structure'} onClick={() => { setReviewMode(false); setMode('structure'); }} icon={<Layers size={16} />} label={UNIT.sceneWord} color="emerald" />
             <ModeButton active={mode === 'contrast'} onClick={() => { setReviewMode(false); setMode('contrast'); }} icon={<GitCompare size={16} />} label="対比" color="orange" />
           </div>
         </div>
@@ -1114,7 +1114,7 @@ export default function App() {
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between items-center mb-3 pb-2 border-b border-teal-100">
                     <h2 className="text-xl font-bold text-emerald-600 flex items-center gap-2">
-                      <BookOpen /> 場面ごとに読もう
+                      <BookOpen /> {UNIT.sceneWord}ごとに読もう
                     </h2>
                     <span className="text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
                       {readParaNum} / {structure.length}
@@ -1149,14 +1149,14 @@ export default function App() {
                       disabled={readParaNum === 1}
                       className="flex items-center gap-1 px-4 py-2 bg-white border border-emerald-200 rounded-full text-emerald-700 font-bold disabled:opacity-30 hover:bg-emerald-50"
                     >
-                      <ChevronLeft size={18} /> 前の場面
+                      <ChevronLeft size={18} /> 前の{UNIT.sceneWord}
                     </button>
                     <button
                       onClick={() => handleStepRead(1)}
                       disabled={readParaNum === structure.length}
                       className="flex items-center gap-1 px-4 py-2 bg-emerald-500 text-white rounded-full font-bold disabled:opacity-30 hover:bg-emerald-600"
                     >
-                      次の場面 <ChevronRight size={18} />
+                      次の{UNIT.sceneWord} <ChevronRight size={18} />
                     </button>
                   </div>
 
@@ -1325,7 +1325,7 @@ export default function App() {
                               {isExpanded && p.feeling && (
                                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-3 flex flex-col gap-2">
                                   <div className="bg-white/80 rounded-lg p-2 border border-emerald-200">
-                                    <div className="text-xs font-bold text-emerald-700 mb-1">読みどころ（{whoLabel(p.feeling.who)}の気持ち）</div>
+                                    <div className="text-xs font-bold text-emerald-700 mb-1">読みどころ（{whoLabel(p.feeling.who)}）</div>
                                     <div className="text-xs text-stone-700">{p.feeling.point}</div>
                                   </div>
                                   <div className="bg-white/80 rounded-lg p-2 border border-amber-200">
@@ -1711,7 +1711,7 @@ function TestResult({
           <div className="w-full bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm text-stone-700">
             <p className="font-bold text-orange-700 mb-1">つぎにやること</p>
             <p>「{SKILLS[weak.s].label}」の問題をもう一度。{SKILLS[weak.s].desc}ようになろう。</p>
-            {weakScenes.length > 0 && <p className="mt-1">読み直すとよい場面：{weakScenes.join('・')}</p>}
+            {weakScenes.length > 0 && <p className="mt-1">読み直すとよい{UNIT.sceneWord}：{weakScenes.join('・')}</p>}
           </div>
         ) : (
           <p className="text-sm font-bold text-emerald-600">ぜんぶできた！ テストもばっちりだね。</p>
