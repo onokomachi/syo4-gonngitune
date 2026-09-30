@@ -6,7 +6,7 @@
  * 問題を足したり直したりしたら、これを走らせて learning-app-kit にコミットし、
  * PRISM とハブの learning-app-kit の版を上げる。
  *
- * 出力先: ../learning-app-kit/src/catalog/gongitsune.ts（となりに kit があるとき）
+ * 出力先: ../learning-app-kit/src/catalog/<appId>.ts（となりに kit があるとき）
  */
 import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
