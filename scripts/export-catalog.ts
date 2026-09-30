@@ -6,11 +6,12 @@
  * 問題を足したり直したりしたら、これを走らせて learning-app-kit にコミットし、
  * PRISM とハブの learning-app-kit の版を上げる。
  *
- * 出力先: ../learning-app-kit/src/catalog/gongitsune.ts（となりに kit があるとき）
+ * 出力先: ../learning-app-kit/src/catalog/<appId>.ts（となりに kit があるとき）
  */
 import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pages, questions, SKILLS, SKILL_ORDER, MISREADS, type Misread } from '../src/data';
+import { UNIT } from '../src/unit';
 
 const KIND_LABEL = { extract: 'ぬき出し', choice: '選択', free: '記述' } as const;
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨';
@@ -37,11 +38,11 @@ const misconceptions = (Object.keys(MISREADS) as Misread[]).map((m, i) => ({
 }));
 
 const catalog = {
-  app_id: 'gongitsune',
-  title: 'ごんぎつね',
+  app_id: UNIT.appId,
+  title: UNIT.title,
   subject: '国語',
   grade: 4,
-  url: 'https://syo4-gonngitune.vercel.app',
+  url: UNIT.url,
   generated_at: new Date().toISOString().slice(0, 10),
   skill_count: questions.length,
   modules,
@@ -49,20 +50,20 @@ const catalog = {
 };
 
 const body = `/**
- * 自動生成されたカタログ: ごんぎつね（国語）
+ * 自動生成されたカタログ: ${UNIT.title}（国語）
  *
  * 算数の単元アプリと構造が違う（問題ジェネレータではなく data.ts の静的データ）。
- * モジュール＝場面、スキル＝設問として並べている。ラベルに読みの力（ことばの意味・
- * ようす・気持ち・うつりかわり・まとめ）を入れ、誤概念の欄には「読みまちがいの型」を入れている。
- * 手で編集しないこと。アプリ側（syo4-gonngitune）の data.ts が正本で、
+ * モジュール＝${UNIT.sceneWord}、スキル＝設問として並べている。ラベルに読みの力
+ * （${SKILL_ORDER.map(s => SKILLS[s].label).join('・')}）を入れ、誤概念の欄には「読みまちがいの型」を入れている。
+ * 手で編集しないこと。アプリ側の data.ts が正本で、
  * \`npm run catalog\` で作り直す。
  */
 import type { AppCatalog } from './types.js';
 
-export const gongitsune: AppCatalog = ${JSON.stringify(catalog, null, 2)};
+export const ${UNIT.appId}: AppCatalog = ${JSON.stringify(catalog, null, 2)};
 `;
 
-const out = resolve(import.meta.dirname, '../../learning-app-kit/src/catalog/gongitsune.ts');
+const out = resolve(import.meta.dirname, `../../learning-app-kit/src/catalog/${UNIT.appId}.ts`);
 if (existsSync(resolve(out, '..'))) {
   writeFileSync(out, body);
   console.log(`✓ ${out} に ${questions.length}問を書き出しました`);

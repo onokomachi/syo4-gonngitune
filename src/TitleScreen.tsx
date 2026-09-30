@@ -9,7 +9,8 @@ const PORTAL = {
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
   supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 };
-import { questions, type Skill } from './data';
+import { questions, SKILLS, SKILL_ORDER, type Skill } from './data';
+import { UNIT } from './unit';
 
 interface SceneProgress {
   title: string;  // 例: ごんのいたずら
@@ -61,9 +62,9 @@ export function TitleScreen({
 
   const greeting =
     cycleCount >= 3 && masterCount === total ? 'マスター完成！すごいね！'
-    : solvedCount === 0 ? 'きょう読んだ場面をえらんでね！'
+    : solvedCount === 0 ? `きょう読んだ${UNIT.sceneWord}をえらんでね！`
     : solvedCount === total ? 'ぜんぶクリア！まとめテストに挑戦しよう！'
-    : 'きょうは、どの場面を読んだかな？';
+    : `きょうは、どの${UNIT.sceneWord}を読んだかな？`;
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -89,7 +90,7 @@ export function TitleScreen({
                 <Target className="text-violet-500" />
                 <h2 className="text-xl font-black text-stone-800">どの力を練習する？</h2>
               </div>
-              <p className="text-xs text-stone-500 -mt-1">場面一から順に、その力の問題だけが出るよ。</p>
+              <p className="text-xs text-stone-500 -mt-1">{UNIT.sceneWord}の順に、その力の問題だけが出るよ。</p>
               {skillProgress.map(sp => (
                 <button
                   key={sp.skill}
@@ -134,19 +135,19 @@ export function TitleScreen({
           <div>
             <div className="flex items-center gap-2 mb-1 text-orange-400 text-sm font-bold tracking-widest">
               <Leaf size={16} />
-              <span>光村図書 国語 4年</span>
+              <span>{UNIT.publisher}</span>
             </div>
             <h1 className="text-4xl font-black text-stone-800 leading-tight">
-              ごん<span className="text-orange-500">ぎつね</span>
+              {UNIT.titleMain}<span className="text-orange-500">{UNIT.titleAccent}</span>
             </h1>
-            <p className="text-stone-500 mt-1 text-sm">新美 南吉</p>
+            <p className="text-stone-500 mt-1 text-sm">{UNIT.author}</p>
           </div>
         </div>
 
         {/* ① きょうの場面 */}
         <div className="w-full">
           <p className="text-sm font-bold text-stone-600 mb-2 flex items-center gap-1">
-            <BookOpen size={16} className="text-emerald-500" /> きょう読んだ場面の問題をとく
+            <BookOpen size={16} className="text-emerald-500" /> きょう読んだ{UNIT.sceneWord}の問題をとく
           </p>
           <div className="grid grid-cols-3 gap-2">
             {sceneProgress.map((sc, i) => {
@@ -180,7 +181,7 @@ export function TitleScreen({
           <Target size={28} className="text-violet-500 shrink-0" />
           <span className="flex-1">
             <span className="block font-black text-stone-700">身につけたい力でえらぶ</span>
-            <span className="block text-xs text-stone-500">ことばの意味・気持ちとわけ などを、全部の場面から練習</span>
+            <span className="block text-xs text-stone-500">{SKILLS[SKILL_ORDER[0]].label}・{SKILLS[SKILL_ORDER[2]].label} などを、全部の{UNIT.sceneWord}から練習</span>
           </span>
           <ChevronRight size={20} className="text-violet-400" />
         </motion.button>
@@ -263,29 +264,29 @@ export function TitleScreen({
 const SLIDES = [
   {
     icon: <MascotPinto expression="happy" size={110} />,
-    title: 'ごんといっしょに！',
-    body: 'ひとりぼっちの小ぎつね「ごん」がいっしょに学ぶよ。まちがえても大丈夫！ヒントを出してくれるから、あきらめないでね。',
+    title: `${UNIT.mascotName}といっしょに！`,
+    body: UNIT.onboardingHello,
     color: 'bg-orange-50 border-orange-200',
     accent: 'text-orange-600',
   },
   {
     icon: <BookOpen size={80} className="text-emerald-500" />,
-    title: 'きょう読んだ場面をえらぼう',
-    body: '授業で読んだ場面をえらぶと、その場面の問題が「ことばの意味 → ようす → 気持ち → うつりかわり → まとめ」の順に出てくるよ。「身につけたい力でえらぶ」から、力ごとに練習することもできるよ。',
+    title: `きょう読んだ${UNIT.sceneWord}をえらぼう`,
+    body: `授業で読んだ${UNIT.sceneWord}をえらぶと、その${UNIT.sceneWord}の問題が「${SKILL_ORDER.map(s => SKILLS[s].label).join(' → ')}」の順に出てくるよ。「身につけたい力でえらぶ」から、力ごとに練習することもできるよ。`,
     color: 'bg-emerald-50 border-emerald-200',
     accent: 'text-emerald-600',
   },
   {
     icon: <MascotPinto expression="thinking" size={110} />,
     title: 'ヒントと「読み方のコツ」',
-    body: 'わからないときはヒントボタン。まちがえたときは、ごんが「読み方のコツ」を教えてくれるよ。',
+    body: `わからないときはヒントボタン。まちがえたときは、${UNIT.mascotName}が「読み方のコツ」を教えてくれるよ。`,
     color: 'bg-amber-50 border-amber-200',
     accent: 'text-amber-600',
   },
   {
     icon: <MascotPinto expression="serious" size={110} />,
     title: 'まとめテストで本気モード',
-    body: '全部の場面から10問。ヒントなしのテストだよ。終わったら、どの力をもう一度練習するとよいかが分かるよ。',
+    body: `全部の${UNIT.sceneWord}から10問。ヒントなしのテストだよ。終わったら、どの力をもう一度練習するとよいかが分かるよ。`,
     color: 'bg-stone-100 border-stone-300',
     accent: 'text-stone-800',
   },
